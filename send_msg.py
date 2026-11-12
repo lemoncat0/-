@@ -1,5 +1,4 @@
 import requests
-import random
 from datetime import datetime
 import os
 
@@ -9,50 +8,41 @@ OPENID = os.getenv("OPENID")
 TEMPLATE_ID = os.getenv("TEMPLATE_ID")
 
 QWEATHER_KEY = os.getenv("QWEATHER_KEY")
-TARGET_CITY = os.getenv("TARGET_CITY", "滑县")
+# 滑县真实location_id，来自你刚刚的接口查询结果
+LOCATION_ID = "101180203"
+TARGET_CITY = "滑县"
 TIANAPI_KEY = os.getenv("TIANAPI_KEY")
 LOVE_START_DATE = os.getenv("LOVE_START_DATE")
-
-# 可选类型：saylove=土味情话 | zaoxin=早安心语 | bulletin=每日简报
-# 如果你想要心语+简报一起推送，代码里已经做好
 TIAN_TYPE = os.getenv("TIAN_TYPE", "saylove")
 
 
 def get_wx_access_token():
-    url = "https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid={}&secret={}".format(WX_APPID, WX_APPSECRET)
+    url = f"https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid={WX_APPID}&secret={WX_APPSECRET}"
     res = requests.get(url).json()
     if "access_token" not in res:
-        raise Exception(f"获取微信token失败：{res}")
+        raise Exception(f"微信token获取失败：{res}")
     return res["access_token"]
 
 
-def get_location_id(city_name, qkey):
-    url = f"https://geoapi.qweather.com/v2/city/lookup?location={city_name}&key={qkey}"
-    resp = requests.get(url).json()
-    if resp["code"] == "200" and len(resp["location"]) > 0:
-        return resp["location"][0]["id"], resp["location"][0]["name"]
-    return None, city_name
-
-
-def get_weather(location_id, qkey):
-    url = f"https://devapi.qweather.com/v7/weather/now?location={location_id}&key={qkey}"
+def get_weather(loc_id, key):
+    url = f"https://devapi.qweather.com/v7/weather/now?location={loc_id}&key={key}"
     resp = requests.get(url).json()
     if resp["code"] != "200":
-        return {"text": "未知天气", "temp": "--", "tip": "今天也要好好照顾自己，不要太累啦"}
+        return {"text": "未知天气", "temp": "--", "tip": "天气查询失败"}
     now = resp["now"]
     weather_text = now["text"]
     temp = now["temp"]
     t = int(temp)
-    if t < 8:
-        tip = "外面很冷，记得穿厚外套，戴好围巾，别冻着啦"
-    elif 8 <= t < 16:
-        tip = "气温偏凉，随身带一件外套，降温了及时穿上"
-    elif 16 <= t < 24:
-        tip = "温度刚刚好，是舒服的一天，愿你事事顺心"
-    elif 24 <= t < 30:
-        tip = "天气暖暖的，记得多喝点温水"
+    if t < 5:
+        tip = "天气很冷，记得多穿厚衣服，注意保暖。"
+    elif t < 15:
+        tip = "气温偏低，出门带上外套。"
+    elif t < 25:
+        tip = "温度很舒服，适合出门走走。"
+    elif t < 32:
+        tip = "有点热，注意补水防晒。"
     else:
-        tip = "天气很热，做好防晒，不要中暑啦"
+        tip = "高温天气，尽量少在外面久待。"
     return {"text": weather_text, "temp": temp, "tip": tip}
 
 
@@ -67,7 +57,7 @@ def get_tian_content(api_key, tian_type):
         r = requests.get(f"https://apis.tianapi.com/zaoxin/index?key={api_key}").json()
         if r["code"] == 200:
             say_text = r["result"]["content"]
-    # 每日简报固定带上一条热点
+    # 每日简报
     r_bul = requests.get(f"https://apis.tianapi.com/bulletin/index?key={api_key}").json()
     if r_bul["code"] == 200 and len(r_bul["result"]["list"]) > 0:
         first = r_bul["result"]["list"][0]
@@ -79,26 +69,21 @@ def calc_love_days(start_date):
     start = datetime.strptime(start_date, "%Y-%m-%d")
     now = datetime.now()
     delta = now - start
-    return f"我们已经在一起 {delta.days} 天啦"
+    return f"{delta.days}天"
 
 
 def send_template_msg():
     token = get_wx_access_token()
-    loc_id, real_city = get_location_id(TARGET_CITY, QWEATHER_KEY)
-    if loc_id is None:
-        weather = {"text": "查询失败", "temp": "--", "tip": "城市查询出错啦，记得照顾好自己"}
-    else:
-        weather = get_weather(loc_id, QWEATHER_KEY)
-
+    weather = get_weather(LOCATION_ID, QWEATHER_KEY)
     say_text, news_text = get_tian_content(TIANAPI_KEY, TIAN_TYPE)
     love_day_str = calc_love_days(LOVE_START_DATE)
 
-    post_data = {
+    data = {
         "touser": OPENID,
         "template_id": TEMPLATE_ID,
         "data": {
             "date": {"value": datetime.now().strftime("%Y-%m-%d")},
-            "city": {"value": real_city},
+            "city": {"value": TARGET_CITY},
             "weather": {"value": weather["text"]},
             "temp": {"value": weather["temp"] + " ℃"},
             "tip": {"value": weather["tip"]},
@@ -107,10 +92,11 @@ def send_template_msg():
             "news": {"value": news_text}
         }
     }
-    url = "https://api.weixin.qq.com/cgi-bin/message/template/send?access_token={}".format(token)
-    result = requests.post(url, json=post_data).json()
-    print("推送返回结果：", result)
-    return result
+    url = f"https://api.weixin.qq.com/cgi-bin/message/template/send?access_token={token}"
+    res = requests.post(url, json=data).json()
+    print("微信返回结果：", res)
+    if res["errcode"] != 0:
+        raise Exception(f"推送失败 {res}")
 
 
 if __name__ == "__main__":
