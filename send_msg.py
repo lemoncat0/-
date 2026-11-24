@@ -28,33 +28,33 @@ now = datetime.now(BJ)
 
 # WMO 天气码 → 中文
 WMO = {
- 0: "晴", 1: "大部晴朗", 2: "多云", 3: "阴",
- 45: "雾", 48: "冻雾",
- 51: "毛毛雨", 53: "毛毛雨", 55: "毛毛雨", 56: "冻毛毛雨", 57: "冻毛毛雨",
- 61: "小雨", 63: "中雨", 65: "大雨", 66: "冻雨", 67: "冻雨",
- 71: "小雪", 73: "中雪", 75: "大雪", 77: "雪粒",
- 80: "阵雨", 81: "阵雨", 82: "强阵雨", 85: "阵雪", 86: "阵雪",
- 95: "雷雨", 96: "雷雨伴冰雹", 99: "雷雨伴冰雹",
+    0: "晴", 1: "大部晴朗", 2: "多云", 3: "阴",
+    45: "雾", 48: "冻雾",
+    51: "毛毛雨", 53: "毛毛雨", 55: "毛毛雨", 56: "冻毛毛雨", 57: "冻毛毛雨",
+    61: "小雨", 63: "中雨", 65: "大雨", 66: "冻雨", 67: "冻雨",
+    71: "小雪", 73: "中雪", 75: "大雪", 77: "雪粒",
+    80: "阵雨", 81: "阵雨", 82: "强阵雨", 85: "阵雪", 86: "阵雪",
+    95: "雷雨", 96: "雷雨伴冰雹", 99: "雷雨伴冰雹",
 }
 
 
 def fetch_json(url, params=None):
- try:
+    try:
         r = requests.get(url, params=params, timeout=10)
- return r.json()
- except Exception as e:
- print("请求失败:", url, e)
- return None
+        return r.json()
+    except Exception as e:
+        print("请求失败:", url, e)
+        return None
 
 
 def get_weather():
- """Open-Meteo 免费天气，无需 key。"""
+    """Open-Meteo 免费天气，无需 key。"""
     data = fetch_json("https://api.open-meteo.com/v1/forecast", {
- "latitude": LAT, "longitude": LON,
- "current": "temperature_2m,weather_code,apparent_temperature",
- "timezone": "Asia/Shanghai",
- })
- if not data or "current" not in data:
+        "latitude": LAT, "longitude": LON,
+        "current": "temperature_2m,weather_code,apparent_temperature",
+        "timezone": "Asia/Shanghai",
+    })
+    if not data or "current" not in data:
         return {"text": "未知", "temp": "--", "tip": "今天也要好好照顾自己。"}
     c = data["current"]
     code = c.get("weather_code", 0)
@@ -73,16 +73,21 @@ def get_weather():
     return {"text": text, "temp": temp, "tip": tip}
 
 
-def tian(path, num=3):
-    """调用天行接口，兼容 result.list / result.newslist / result 为数组三种结构。"""
-    data = fetch_json(f"https://apis.tianapi.com/{path}/index",
-                      {"key": TIANAPI_KEY, "num": num})
+def tian(path, num=3, extra=None):
+    """调用天行接口，兼容三种结构：result.list / result.newslist / result 为数组；
+    单条接口（情话/心语/妙招）result 直接是内容字典，也包成 [dict] 返回。"""
+    params = {"key": TIANAPI_KEY, "num": num}
+    if extra:
+        params.update(extra)
+    data = fetch_json(f"https://apis.tianapi.com/{path}/index", params)
     if not data or data.get("code") != 200:
         print(f"  天行 {path} 返回:", data)
         return []
     res = data.get("result")
     if isinstance(res, dict):
-        lst = res.get("list") or res.get("newslist") or []
+        lst = res.get("list") or res.get("newslist")
+        if not lst:
+            lst = [res]  # 单条接口：result 本身就是内容字典
     elif isinstance(res, list):
         lst = res
     else:
@@ -121,14 +126,19 @@ bulletin = [news_item(x) for x in tian("bulletin", 3)][:2]
 hot = []
 for x in tian("networkhot", 5):
     hot.append({
-        "title": (x.get("title") or "").strip(),
-        "hot": x.get("hotnum", ""),
-        "desc": (x.get("digest") or "").strip(),
-    })
+ "title": (x.get("title") or "").strip(),
+ "hot": x.get("hotnum", ""),
+ "desc": (x.get("digest") or "").strip(),
+ })
 hot = hot[:3]
 
-health = tian("healthtip", 1)
-health_text = (health[0].get("content", "") if health else "") or "好好吃饭，好好睡觉，少熬夜。"
+# 健康小妙招：healthskill 需传关键词，内置一组常见养生主题按天轮换
+HEALTH_WORDS = ["失眠", "疲劳", "护眼", "上火", "颈椎", "肠胃",
+ "减脂", "脱发", "便秘", "感冒", "咳嗽", "口臭"]
+health_word = HEALTH_WORDS[day_of_year % len(HEALTH_WORDS)]
+health = tian("healthskill", extra={"word": health_word})
+health_title = (health[0].get("title", "") if health else "").strip()
+health_text = (health[0].get("content", "") if health else "").strip() or "好好吃饭，好好睡觉，少熬夜。"
 
 # ---------------- 3. 在一起天数 ----------------
 try:
@@ -142,7 +152,7 @@ weather = get_weather()
 
 # 卡片“今日看点”取第一条有标题的新闻
 first_news = next((n["title"] for n in (social + ai + bulletin) if n["title"]),
-                  "今日热点已整理在下方页面")
+ "今日热点已整理在下方页面")
 
 date_str = now.strftime("%Y-%m-%d")
 week_cn = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][now.weekday()]
@@ -150,39 +160,39 @@ week_cn = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
 
 # ---------------- 4. 生成 H5 聚合页 ----------------
 def render_news_block(title, items, with_desc=True):
-    if not items:
-        return ""
+ if not items:
+ return ""
     rows = []
-    for n in items:
-        if not n["title"]:
-            continue
+ for n in items:
+ if not n["title"]:
+ continue
         desc = f'<p class="desc">{esc(n["desc"])}</p>' if (with_desc and n["desc"]) else ""
         source = f'<span class="source">{esc(n["source"])}</span>' if n["source"] else ""
-        if n["url"]:
+ if n["url"]:
             body = f'<a class="item" href="{esc(n["url"])}" target="_blank" rel="noopener noreferrer">' \
-                   f'<div class="title">{esc(n["title"])}</div>{desc}{source}</a>'
-        else:
+ f'<div class="title">{esc(n["title"])}</div>{desc}{source}</a>'
+ else:
             body = f'<div class="item"><div class="title">{esc(n["title"])}</div>{desc}{source}</div>'
         rows.append(body)
-    if not rows:
-        return ""
-    return f'<section class="block"><h3>{esc(title)}</h3>{"".join(rows)}</section>'
+ if not rows:
+ return ""
+ return f'<section class="block"><h3>{esc(title)}</h3>{"".join(rows)}</section>'
 
 
 def render_hot_block():
-    if not hot:
-        return ""
+ if not hot:
+ return ""
     rows = []
-    for i, n in enumerate(hot, 1):
-        if not n["title"]:
-            continue
+ for i, n in enumerate(hot, 1):
+ if not n["title"]:
+ continue
         hot_label = f'🔥 {esc(n["hot"])}' if n["hot"] else ""
         rows.append(f'<div class="item rank"><span class="no">{i}</span>'
-                    f'<div><div class="title">{esc(n["title"])}</div>'
-                    f'<span class="hot">{hot_label}</span></div></div>')
-    if not rows:
-        return ""
-    return f'<section class="block"><h3>全网热搜</h3>{"".join(rows)}</section>'
+ f'<div><div class="title">{esc(n["title"])}</div>'
+ f'<span class="hot">{hot_label}</span></div></div>')
+ if not rows:
+ return ""
+ return f'<section class="block"><h3>全网热搜</h3>{"".join(rows)}</section>'
 
 
 page = f"""<!DOCTYPE html>
@@ -237,13 +247,13 @@ page = f"""<!DOCTYPE html>
     <div class="days">💗 {esc(love_day)}</div>
   </div>
 
-  {render_news_block("社会新闻", social)}
-  {render_news_block("AI 资讯", ai)}
-  {render_news_block("每日简报", bulletin)}
-  {render_hot_block()}
+ {render_news_block("社会新闻", social)}
+ {render_news_block("AI 资讯", ai)}
+ {render_news_block("每日简报", bulletin)}
+ {render_hot_block()}
 
   <div class="card health">
-    <h3 style="color:#c98a3a;margin-bottom:8px;">💡 健康小妙招</h3>
+    <h3 style="color:#c98a3a;margin-bottom:8px;">💡 健康小妙招{(' · ' + esc(health_title)) if health_title else ''}</h3>
     <div class="tip">{esc(health_text)}</div>
   </div>
 
