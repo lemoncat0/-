@@ -38,13 +38,20 @@ WMO = {
 }
 
 
-def fetch_json(url, params=None):
-    try:
-        r = requests.get(url, params=params, timeout=10)
-        return r.json()
-    except Exception as e:
-        print("请求失败:", url, e)
-        return None
+def fetch_json(url, params=None, method="GET", timeout=10, retries=2):
+    last = None
+    for _ in range(retries + 1):
+        try:
+            if method == "POST":
+                r = requests.post(url, json=params, timeout=timeout)
+            else:
+                r = requests.get(url, params=params, timeout=timeout)
+            return r.json()
+        except Exception as e:
+            last = e
+            print("请求失败:", url, e)
+    print("重试后仍失败:", url, last)
+    return None
 
 
 def get_weather():
@@ -53,7 +60,7 @@ def get_weather():
         "latitude": LAT, "longitude": LON,
         "current": "temperature_2m,weather_code,apparent_temperature",
         "timezone": "Asia/Shanghai",
-    })
+    }, timeout=25, retries=2)
     if not data or "current" not in data:
         return {"text": "未知", "temp": "--", "tip": "今天也要好好照顾自己。"}
     c = data["current"]
@@ -132,11 +139,18 @@ for x in tian("networkhot", 5):
     })
 hot = hot[:3]
 
-# 健康小妙招：healthskill 需传关键词，内置一组常见养生主题按天轮换
-HEALTH_WORDS = ["失眠", "疲劳", "护眼", "上火", "颈椎", "肠胃",
-                "减脂", "脱发", "便秘", "感冒", "咳嗽", "口臭"]
-health_word = HEALTH_WORDS[day_of_year % len(HEALTH_WORDS)]
-health = tian("healthskill", extra={"word": health_word})
+# 健康小妙招：healthskill 词库较窄，按天轮换起始词，依次尝试直到取到非空内容
+HEALTH_WORDS = ["失眠", "睡眠", "疲劳", "运动", "减压", "饮食",
+                "颈椎", "护眼", "肠胃", "便秘", "感冒", "脱发"]
+health = []
+health_word = ""
+start_idx = day_of_year % len(HEALTH_WORDS)
+for i in range(len(HEALTH_WORDS)):
+    w = HEALTH_WORDS[(start_idx + i) % len(HEALTH_WORDS)]
+    cand = tian("healthskill", extra={"word": w})
+    if cand and cand[0].get("content", "").strip():
+        health, health_word = cand, w
+        break
 health_title = (health[0].get("title", "") if health else "").strip()
 health_text = (health[0].get("content", "") if health else "").strip() or "好好吃饭，好好睡觉，少熬夜。"
 
@@ -294,7 +308,7 @@ def send_card(token):
         },
     }
     url = f"https://api.weixin.qq.com/cgi-bin/message/template/send?access_token={token}"
-    res = fetch_json(url)
+    res = fetch_json(url, params=data, method="POST", timeout=10)
     print("微信返回:", res)
     return res
 
