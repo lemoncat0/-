@@ -126,15 +126,15 @@ bulletin = [news_item(x) for x in tian("bulletin", 3)][:2]
 hot = []
 for x in tian("networkhot", 5):
     hot.append({
- "title": (x.get("title") or "").strip(),
- "hot": x.get("hotnum", ""),
- "desc": (x.get("digest") or "").strip(),
- })
+        "title": (x.get("title") or "").strip(),
+        "hot": x.get("hotnum", ""),
+        "desc": (x.get("digest") or "").strip(),
+    })
 hot = hot[:3]
 
 # 健康小妙招：healthskill 需传关键词，内置一组常见养生主题按天轮换
 HEALTH_WORDS = ["失眠", "疲劳", "护眼", "上火", "颈椎", "肠胃",
- "减脂", "脱发", "便秘", "感冒", "咳嗽", "口臭"]
+                "减脂", "脱发", "便秘", "感冒", "咳嗽", "口臭"]
 health_word = HEALTH_WORDS[day_of_year % len(HEALTH_WORDS)]
 health = tian("healthskill", extra={"word": health_word})
 health_title = (health[0].get("title", "") if health else "").strip()
@@ -152,7 +152,7 @@ weather = get_weather()
 
 # 卡片“今日看点”取第一条有标题的新闻
 first_news = next((n["title"] for n in (social + ai + bulletin) if n["title"]),
- "今日热点已整理在下方页面")
+                  "今日热点已整理在下方页面")
 
 date_str = now.strftime("%Y-%m-%d")
 week_cn = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][now.weekday()]
@@ -160,39 +160,39 @@ week_cn = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
 
 # ---------------- 4. 生成 H5 聚合页 ----------------
 def render_news_block(title, items, with_desc=True):
- if not items:
- return ""
+    if not items:
+        return ""
     rows = []
- for n in items:
- if not n["title"]:
- continue
+    for n in items:
+        if not n["title"]:
+            continue
         desc = f'<p class="desc">{esc(n["desc"])}</p>' if (with_desc and n["desc"]) else ""
         source = f'<span class="source">{esc(n["source"])}</span>' if n["source"] else ""
- if n["url"]:
+        if n["url"]:
             body = f'<a class="item" href="{esc(n["url"])}" target="_blank" rel="noopener noreferrer">' \
- f'<div class="title">{esc(n["title"])}</div>{desc}{source}</a>'
- else:
+                   f'<div class="title">{esc(n["title"])}</div>{desc}{source}</a>'
+        else:
             body = f'<div class="item"><div class="title">{esc(n["title"])}</div>{desc}{source}</div>'
         rows.append(body)
- if not rows:
- return ""
- return f'<section class="block"><h3>{esc(title)}</h3>{"".join(rows)}</section>'
+    if not rows:
+        return ""
+    return f'<section class="block"><h3>{esc(title)}</h3>{"".join(rows)}</section>'
 
 
 def render_hot_block():
- if not hot:
- return ""
+    if not hot:
+        return ""
     rows = []
- for i, n in enumerate(hot, 1):
- if not n["title"]:
- continue
+    for i, n in enumerate(hot, 1):
+        if not n["title"]:
+            continue
         hot_label = f'🔥 {esc(n["hot"])}' if n["hot"] else ""
         rows.append(f'<div class="item rank"><span class="no">{i}</span>'
- f'<div><div class="title">{esc(n["title"])}</div>'
- f'<span class="hot">{hot_label}</span></div></div>')
- if not rows:
- return ""
- return f'<section class="block"><h3>全网热搜</h3>{"".join(rows)}</section>'
+                    f'<div><div class="title">{esc(n["title"])}</div>'
+                    f'<span class="hot">{hot_label}</span></div></div>')
+    if not rows:
+        return ""
+    return f'<section class="block"><h3>全网热搜</h3>{"".join(rows)}</section>'
 
 
 page = f"""<!DOCTYPE html>
@@ -247,10 +247,10 @@ page = f"""<!DOCTYPE html>
     <div class="days">💗 {esc(love_day)}</div>
   </div>
 
- {render_news_block("社会新闻", social)}
- {render_news_block("AI 资讯", ai)}
- {render_news_block("每日简报", bulletin)}
- {render_hot_block()}
+  {render_news_block("社会新闻", social)}
+  {render_news_block("AI 资讯", ai)}
+  {render_news_block("每日简报", bulletin)}
+  {render_hot_block()}
 
   <div class="card health">
     <h3 style="color:#c98a3a;margin-bottom:8px;">💡 健康小妙招{(' · ' + esc(health_title)) if health_title else ''}</h3>
@@ -269,39 +269,39 @@ print("✅ H5 聚合页已生成 index.html")
 # ---------------- 5. 推送微信卡片 ----------------
 def get_wx_token():
     url = ("https://api.weixin.qq.com/cgi-bin/token"
- f"?grant_type=client_credential&appid={WX_APPID}&secret={WX_APPSECRET}")
+           f"?grant_type=client_credential&appid={WX_APPID}&secret={WX_APPSECRET}")
     res = fetch_json(url)
- if not res or "access_token" not in res:
- print("❌ 微信 token 获取失败:", res)
- return None
- return res["access_token"]
+    if not res or "access_token" not in res:
+        print("❌ 微信 token 获取失败:", res)
+        return None
+    return res["access_token"]
 
 
 def send_card(token):
     data = {
- "touser": OPENID,
- "template_id": TEMPLATE_ID,
- "url": PAGES_URL,
- "data": {
- "date": {"value": date_str},
- "city": {"value": CITY},
- "weather": {"value": weather["text"]},
- "temp": {"value": f'{weather["temp"]} ℃'},
- "tip": {"value": weather["tip"]},
- "love_day": {"value": love_day},
- "say": {"value": say[:60]},
- "news": {"value": first_news[:30]},
- },
- }
+        "touser": OPENID,
+        "template_id": TEMPLATE_ID,
+        "url": PAGES_URL,
+        "data": {
+            "date": {"value": date_str},
+            "city": {"value": CITY},
+            "weather": {"value": weather["text"]},
+            "temp": {"value": f'{weather["temp"]} ℃'},
+            "tip": {"value": weather["tip"]},
+            "love_day": {"value": love_day},
+            "say": {"value": say[:60]},
+            "news": {"value": first_news[:30]},
+        },
+    }
     url = f"https://api.weixin.qq.com/cgi-bin/message/template/send?access_token={token}"
     res = fetch_json(url)
- print("微信返回:", res)
- return res
+    print("微信返回:", res)
+    return res
 
 
 if __name__ == "__main__":
- print("=== 开始执行每日推送 ===")
+    print("=== 开始执行每日推送 ===")
     token = get_wx_token()
- if token:
- send_card(token)
- print("=== 执行结束 ===")
+    if token:
+        send_card(token)
+    print("=== 执行结束 ===")
